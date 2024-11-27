@@ -28,6 +28,7 @@ class MainViewModel : ViewModel() {
                 _location.value = ViewModelState.Success(locationData)
             } catch (e: Exception) {
                 _location.value = ViewModelState.Error("Houve um erro ao buscar localização")
+                Log.e("MainViewModel", "Error: ${e.message}")
             }
         }
     }

@@ -1,34 +1,24 @@
 package com.eduardosdl.findmypet
 
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
-import com.eduardosdl.findmypet.data.ApiResponse
+import androidx.compose.ui.unit.dp
 import com.eduardosdl.findmypet.data.LocationData
 import com.eduardosdl.findmypet.ui.theme.FindMyPetTheme
 import com.google.android.gms.maps.model.CameraPosition
@@ -40,8 +30,18 @@ import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
-import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModel
-import com.patrykandpatrick.vico.core.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
+import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
+import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.random.Random
 
 
 class MainActivity : ComponentActivity() {
@@ -71,7 +71,7 @@ fun MainScreen(
     val locationState by viewModel.location.collectAsState()
     val heartRateState by viewModel.heartRate.collectAsState()
 
-    when(locationState) {
+    when (locationState) {
         is ViewModelState.Idle -> {}
 
         is ViewModelState.Loading -> {
@@ -109,31 +109,57 @@ fun MainContent(
         position = CameraPosition.fromLatLngZoom(pet, 15f)
     }
 
-    Scaffold { innerPadding ->
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight(0.6f)
-            .padding(innerPadding)) {
-            GoogleMap(
-                modifier = Modifier.matchParentSize(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(mapType = MapType.SATELLITE),
-                uiSettings = MapUiSettings(zoomControlsEnabled = true)
-            ) {
-                Marker(state = markerPetState)
+    val modelProducer = remember { CartesianChartModelProducer() }
+
+    LaunchedEffect(Unit) {
+        val hours = (0..9).map { it.toFloat() }
+        val frequencies = listOf(30, 45, 60, 75, 80, 65, 50, 85, 90, 100)
+
+        withContext(Dispatchers.Default) {
+            modelProducer.runTransaction {
+                lineSeries {
+                    series(frequencies, frequencies.map { Random.nextFloat() * 15 })
+                }
             }
         }
+    }
 
-        Box(
-            modifier = Modifier.fillMaxSize()
+    Scaffold { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
         ) {
-            CartesianChartModel(
-                LineCartesianLayerModel.build {
-                    series(1, 8, 3, 7)
-                    series(y = listOf(6, 1, 9, 3))
-                    series(x = listOf(1, 2, 3, 4), y = listOf(2, 5, 3, 4))
-                },
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.6f)
+            ) {
+                GoogleMap(
+                    modifier = Modifier.matchParentSize(),
+                    cameraPositionState = cameraPositionState,
+                    properties = MapProperties(mapType = MapType.SATELLITE),
+                    uiSettings = MapUiSettings(zoomControlsEnabled = true)
+                ) {
+                    Marker(state = markerPetState)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.4f)
+                    .padding(16.dp)
+            ) {
+                CartesianChartHost(
+                    chart = rememberCartesianChart(
+                        rememberLineCartesianLayer(),
+                        startAxis = VerticalAxis.rememberStart(title = "Frequência"),
+                        bottomAxis = HorizontalAxis.rememberBottom(title = "Horas"),
+                    ),
+                    modelProducer = modelProducer,
+                )
+            }
         }
     }
 }
