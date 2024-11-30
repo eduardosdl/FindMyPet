@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +20,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.eduardosdl.findmypet.data.HeartRateData
 import com.eduardosdl.findmypet.data.LocationData
+import com.eduardosdl.findmypet.data.PetStatusData
 import com.eduardosdl.findmypet.ui.theme.FindMyPetTheme
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -35,13 +38,18 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.rememberBottom
 import com.patrykandpatrick.vico.compose.cartesian.axis.rememberStart
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.compose.common.component.rememberShapeComponent
+import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
+import com.patrykandpatrick.vico.compose.common.dimensions
+import com.patrykandpatrick.vico.compose.common.fill
 import com.patrykandpatrick.vico.core.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.core.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.core.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.core.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.core.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.core.common.shape.CorneredShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.random.Random
 
 
 class MainActivity : ComponentActivity() {
@@ -52,7 +60,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FindMyPetTheme {
-                MainScreen(viewModel)
+                MainRoute(viewModel)
             }
         }
     }
@@ -65,13 +73,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(
+fun MainRoute(
     viewModel: MainViewModel
 ) {
-    val locationState by viewModel.location.collectAsState()
-    val heartRateState by viewModel.heartRate.collectAsState()
+    val petState by viewModel.petStatusData.collectAsState()
 
-    when (locationState) {
+    when (petState) {
         is ViewModelState.Idle -> {}
 
         is ViewModelState.Loading -> {
@@ -83,25 +90,37 @@ fun MainScreen(
         }
 
         is ViewModelState.Success -> {
-            val location = (locationState as ViewModelState.Success<LocationData>).data
-            MainContent(
-                location
-            )
+            val petData = (petState as ViewModelState.Success<PetStatusData>).data
+
+            if (petData.location == null || petData.heartRate == null) {
+                Toast.makeText(
+                    LocalContext.current,
+                    "Nenhuma informação encontrada",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                MainScreen(
+                    location = petData.location,
+                    heartRate = petData.heartRate
+                )
+            }
         }
 
         is ViewModelState.Error -> {
             Toast.makeText(
                 LocalContext.current,
-                (locationState as ViewModelState.Error).message,
+                (petState as ViewModelState.Error).message,
                 Toast.LENGTH_SHORT
             ).show()
         }
     }
+
 }
 
 @Composable
-fun MainContent(
+fun MainScreen(
     location: LocationData,
+    heartRate: HeartRateData
 ) {
     val pet = LatLng(location.latitude, location.longitude)
     val markerPetState = rememberMarkerState(position = pet)
@@ -110,16 +129,18 @@ fun MainContent(
     }
 
     val modelProducer = remember { CartesianChartModelProducer() }
+    val bottomFormatter = remember {
+        CartesianValueFormatter { _, x, _ ->
+            heartRate.time.reversed()[x.toInt() % heartRate.time.size]
+        }
+    }
 
     LaunchedEffect(Unit) {
-        val hours = (0..9).map { it.toFloat() }
-        val frequencies = listOf(30, 45, 60, 75, 80, 65, 50, 85, 90, 100)
+        val frequencies = heartRate.frequency.reversed()
 
         withContext(Dispatchers.Default) {
             modelProducer.runTransaction {
-                lineSeries {
-                    series(frequencies, frequencies.map { Random.nextFloat() * 15 })
-                }
+                lineSeries { series(frequencies) }
             }
         }
     }
@@ -154,8 +175,41 @@ fun MainContent(
                 CartesianChartHost(
                     chart = rememberCartesianChart(
                         rememberLineCartesianLayer(),
-                        startAxis = VerticalAxis.rememberStart(title = "Frequência"),
-                        bottomAxis = HorizontalAxis.rememberBottom(title = "Horas"),
+                        startAxis =
+                        VerticalAxis.rememberStart(
+                            guideline = null,
+                            horizontalLabelPosition = VerticalAxis.HorizontalLabelPosition.Inside,
+                            titleComponent =
+                            rememberTextComponent(
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                margins = dimensions(end = 4.dp),
+                                padding = dimensions(8.dp, 2.dp),
+                                background = rememberShapeComponent(
+                                    fill(MaterialTheme.colorScheme.primary),
+                                    CorneredShape.Pill
+                                ),
+                            ),
+                            title = "Frequência",
+                        ),
+                        bottomAxis =
+                        HorizontalAxis.rememberBottom(
+                            valueFormatter = bottomFormatter,
+                            labelRotationDegrees = 270f,
+
+                            itemPlacer = remember { HorizontalAxis.ItemPlacer.aligned() },
+                            titleComponent =
+                            rememberTextComponent(
+                                color = MaterialTheme.colorScheme.onSecondary,
+                                margins = dimensions(top = 16.dp),
+                                padding = dimensions(8.dp, 2.dp),
+                                background =
+                                rememberShapeComponent(
+                                    fill(MaterialTheme.colorScheme.secondary),
+                                    CorneredShape.Pill
+                                ),
+                            ),
+                            title = "Tempo",
+                        ),
                     ),
                     modelProducer = modelProducer,
                 )
